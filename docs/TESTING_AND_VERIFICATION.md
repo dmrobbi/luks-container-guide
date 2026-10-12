@@ -191,20 +191,34 @@ instead — deterministic, no ask daemon, fails fast.
   fast (exit 1), the vault stays locked and intact;
 - both negatives: the wrong credential (pre-enrollment) and the empty credential.
 
-**Not proven — stated honestly (updated after the second-physical-chip attempt):**
-- The fleet's second TPM machine WAS attempted: a freshly enrolled 64 MB vault
-  shipped to the second host and both of its open paths were measured. The second
-  host's /dev TPM nodes and the cryptsetup TCTI library are present, but its TPM2
-  stack refuses tool contexts ("Failed to create TPM2 context: Operation not
-  supported") — so what was observed there is a NON-FUNCTIONAL second stack, not
-  yet a demonstrated foreign-chip consult rejection.
-- What IS measured across the two machines: (a) the shipped image opens on the
-  second host with its passphrase (rc=0 — the file arrived intact, the image is
-  valid there — the positive control), (b) the TPM-token consult fails fast on it
-  (rc=1, no mapper), (c) the same image unseals credentiallessly on the enrolling
-  host (the fourth consecutive). The definitive pair (an enrollment on the second
-  chip SUCCEEDING, then the two chips refusing each other's seals) stays open
-  pending the second host's TPM2-stack diagnosis.
+**Not proven — stated honestly (updated after the cross-chip pair landed):**
+- ROOT CAUSE FOUND for the earlier "second stack refuses tool contexts" reading:
+  the machines were missing the tpm2-tss runtime libraries (libtss2-esys/mu/rc/
+  tcti-device). On the first host an strace caught systemd dlopen'ing
+  libtss2-rc.so.0 and friends and finding none — "TPM2 support is not installed";
+  installing the runtime set flipped the same tool from that error to listing
+  the chip (tpm_crb via /dev/tpmrm0). The second host had already gained the set
+  as a side effect of installing tpm2-tools — the refusal stopped reproducing at
+  the same moment. The chip, the kernel, and systemd were never the problem.
+- The definitive cross-chip pair is now MEASURED (2026-10-12): (a) an enrollment
+  on the second host's chip SUCCEEDS (systemd-cryptenall rc=0, "New TPM2 token
+  enrolled as key slot 1"); (b) the same image unseals credentiallessly on the
+  second host with its own chip (rc=0, mapper up, closed cleanly); (c) shipped
+  to the first host, the token-only open REFUSES at the real Esys_Load (TPM
+  error 0x1df, "Failed to unseal secret using TPM2: State not recoverable",
+  rc=1) — the two chips refuse each other's seals; (d) the passphrase fallback
+  opens the same image on both hosts (rc=0). Earlier, still standing: the image
+  validates on the other host with its passphrase (the positive control) and the
+  token consult fails fast with no mapper there.
+- Two process lessons from this arc (reproducible): [1] systemd-cryptenall with
+  non-tty stdin does NOT read the unlock credential from stdin — it creates a
+  /run/systemd/ask-password session and waits indefinitely (a 90s timeout kill
+  exposed the wait); hand the credential via a 0600 stage file +
+  --unlock-key-file, then shred it. [2] cryptsetup's stdin passphrase loses its
+  trailing newline (line semantics) while --key-file consumes the whole file —
+  a "pass\n" keyfile does not match a "pass" bound at luksFormat time and
+  surfaces as "Unlocking via keyfile failed: Operation not permitted". Create
+  and every later unlock must derive the credential identically.
 - The vTPM variant: the fleet's Ubuntu ships the swtpm socket backend but NO
   swtpm_cuse character-device frontend, and the systemd TPM2 tooling consumes
   device TCTIs only — a systemd-usable virtual chip is not buildable here without
