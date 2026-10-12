@@ -83,6 +83,28 @@ printf '%s' '<pass>' | kubectl -n luks-vault exec deploy/luks-vault -i -T -- vau
   them); no secret material is committed anywhere — credentials at runtime stdin
   only.
 
+## HA: several machines, one vault (TPM binding on Kubernetes)
+
+The vault's credential surface = TPM chips + the kernel keyring + the recovery
+passphrase. Two shapes make several nodes run it with failover capability:
+
+- **Physical-chip fleet (the active-passive shape)**: the vault image lives in ONE
+  `ReadWriteOnce` PVC; enroll it on EVERY node permitted to host the pod (one TPM
+  slot each — LUKS2 allows 32), keeping the recovery passphrase. Pin the pod to the
+  enrolled nodes with nodeAffinity; keep `replicas: 1` + `strategy: Recreate` (the
+  manifest unchanged). On failover the RWO volume re-attaches to the next node,
+  whose own enrolled slot unseals the SAME image; foreign nodes stay inert;
+  revocation = per-slot kill (see `docker.md`). A privileged pod can reach the
+  node's TPM device nodes the same way it reaches the loop/mapper surface.
+- **vTPM carrier (the migration-friendlier shape)**: run the vault INSIDE a VM
+  (KubeVirt) whose vTPM state persists on a backend-storage PVC — persistent TPM +
+  UEFI state is a feature since KubeVirt v1.0.0, and vTPM live migration is actively
+  maintained upstream. There the binding follows the VM itself: the vault + the
+  chip state + the storage move as one unit through live migration.
+
+Stated honestly: the fleet's LIVE verification ran single-host on Docker
+(`docker.md`); neither HA shape has been live-proven on a cluster yet — run first.
+
 ## Verification checklist (run before trusting your cluster)
 
 1. The pod reaches Ready (the entry's `/run/vault-entry-ready` touch confirms pid1

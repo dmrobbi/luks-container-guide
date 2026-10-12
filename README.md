@@ -15,6 +15,8 @@ six corrections the in-house review found in that sheet.
 | Guide | Status |
 |---|---|
 | `docker.md` | LIVE-verified end-to-end on the fleet host (build → create → unlock → lock → stop → restart → the locked vault persisted → re-unlock) |
+| TPM machine-binding (in `docker.md`) | LIVE-verified on the fleet host's real TPM 2.0: the enrolled token's credentialless unseal ×2 (fresh + post-lock), the empty-credential enroll rejected, the slot-kill foreign-machine simulation (the unseal failed fast), the passphrase recovery |
+| HA posture (in `kubernetes.md`) | Researched + documented (the physical-chip fleet shape + the KubeVirt vTPM carrier); NOT yet live-proven on a cluster — run first |
 | `podman.md` | Adapted equivalents of the verified Docker flow (the compose validation precedent); run the loop on your Podman host first |
 | `kubernetes.md` | The manifest + command shapes adapted from the verified flow; privileged-pod caveats stated; verify on your cluster first |
 
@@ -23,6 +25,7 @@ six corrections the in-house review found in that sheet.
 | File | Covers |
 |---|---|
 | [`docs/LUKS_HOST_SETUP.md`](docs/LUKS_HOST_SETUP.md) | LUKS2 itself: the on-disk method, the two profiles, the lifecycle, keyslots/rotation, header geometry + wipes, backup/restore, detached headers |
+| [`docs/TESTING_AND_VERIFICATION.md`](docs/TESTING_AND_VERIFICATION.md) | HOW it was tested and verified to work: the full live-testing story — the three arcs, the defects caught and fixed with their root causes, the measured TPM semantics, the definitive cycle's leg-by-leg verdicts, and what is proven vs not |
 | [`docker.md`](docker.md) | The vault container on Docker: locked-at-rest / open-while-running, the stop mechanic, credentials-by-stdin |
 | [`podman.md`](podman.md) | The same contract on Podman (rootless-host, root-container): volumes, --privileged, the TERM trap |
 | [`kubernetes.md`](kubernetes.md) | The same contract on Kubernetes: a privileged single-replica pod + a PVC; `kubectl exec -i` for credentials |

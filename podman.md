@@ -83,6 +83,19 @@ podman volume rm luks-vault-vol
    the key.
 3. No secret material committed anywhere; the placeholder is a placeholder.
 
+## TPM machine-binding (adapted, run-first)
+
+The Docker guide's TPM section carries the mechanic and the measured semantics; the
+same two modes run on Podman with the same image layers — add `systemd tpm2-tools`
+to the build's apt line and rebuild. A rootful/privileged Podman container reaches
+the host's TPM device nodes the same way the Docker one does. The loop
+(adapted — run first on your host):
+
+```bash
+printf '%s' '<pass>' | podman exec -i -T luks-vault vault_entry tpm-enroll
+podman exec -T luks-vault vault_entry tpm-unlock
+```
+
 ## Verification checklist (run before trusting your host)
 
 1. `podman exec luks-vault sh -c 'cryptsetup --version'` — cryptsetup present.
@@ -90,3 +103,5 @@ podman volume rm luks-vault-vol
    negatives/lock/leak-check).
 3. `podman stop` → `podman start` → the status = `VAULT-LOCKED` and the re-unlock
    works with the SAME credential (the locked vault persisted).
+4. (Adapted, run-first) The TPM loop: enroll → the credentialless unlock → the
+   slot-kill sim → the unseal refused fast.

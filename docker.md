@@ -4,7 +4,10 @@
 created inside a named volume → unlock with the operator's credential → the canary
 read/write → lock → `docker compose stop` (the trap locks on the way down) → full
 restart → `VAULT-LOCKED persisted` → re-unlock with the same credential → the canary
-survived the lock cycle.
+survived the lock cycle — plus the TPM machine-binding (the enrolled token's
+credentialless unseal, fresh and post-lock; the foreign-machine slot-kill simulation;
+the passphrase recovery). The full test story:
+[Testing and verification](docs/TESTING_AND_VERIFICATION.md).
 
 ## The mechanic
 
@@ -138,6 +141,53 @@ docker compose up -d
 docker compose exec -T luks-vault vault_entry status      # VAULT-LOCKED persisted; unlock works again
 docker compose down -v                                    # ONLY with intent: removes the volume (data gone)
 ```
+
+## TPM machine-binding (verified live)
+
+After enrollment the image unseals WITHOUT any credential, and only on machines
+carrying the chip the seal was made on. The image layer needs the `systemd` +
+`tpm2-tools` packages (the enroll/unseal binaries + the `systemd-tpm2` token plugin
+the cryptsetup CLI loads):
+
+```dockerfile
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        cryptsetup e2fsprogs util-linux bash coreutils systemd tpm2-tools \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+```bash
+# seal the payload key to THIS machine's chip — the EXISTING credential via stdin,
+# staged 0600, handed with --unlock-key-file, shredded after
+printf '%s' '<pass>' | docker compose exec -T luks-vault vault_entry tpm-enroll
+#   -> "New TPM2 token enrolled as key slot 1." + VAULT-TPM-ENROLL-OK
+
+# the TPM-bound open: NO credential, no prompt; a failed consult fails fast
+docker compose exec -T luks-vault vault_entry tpm-unlock   # VAULT-TPM-UNLOCK-OK
+```
+
+What enrollment stores (measured with `cryptsetup luksDump`): a `systemd-tpm2` token
+— `tpm2-hash-pcrs: 7` (SecureBoot / measured-boot state), `tpm2-pcr-bank: sha256`,
+`tpm2-primary-alg: ecc`, `tpm2-srk: true` — plus a keyslot holding the sealed key.
+The passphrase slot REMAINS: that is the off-machine and recovery credential.
+
+**The machine is the authority (measured):** once enrolled, ANY root process on the
+enrolled machine can open the vault — plain `cryptsetup open` consults the token,
+and after any successful open the volume key sits in the kernel keyring, so later
+re-opens succeed even without the token. Consequences, stated plainly:
+
+- the wrong-credential rejection is a PRE-ENROLLMENT and OFF-MACHINE property (the
+  selftest's negatives still prove it);
+- the TPM binding is exactly "the containers can only be used on the specific
+  machines";
+- revoking a machine = kill its slot:
+  `docker compose exec -T luks-vault cryptsetup luksKillSlot /vault/vault.img 1 --batch-mode`.
+
+**The foreign-machine simulation (verified):** after the slot kill, `tpm-unlock` =
+`VAULT-TPM-UNSEAL-FAILED` (exit 1, immediate — no hang), the status stays
+`VAULT-LOCKED`, and the passphrase recovery still opens the vault. That is the
+behavior a copy on a machine without the chip sees — the token consult fails, no
+usable binding, no unseal. The full leg-by-leg cycle:
+[Testing and verification](docs/TESTING_AND_VERIFICATION.md).
 
 ## The two verified trapdoors (standing rules)
 
