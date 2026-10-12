@@ -191,11 +191,25 @@ instead — deterministic, no ask daemon, fails fast.
   fast (exit 1), the vault stays locked and intact;
 - both negatives: the wrong credential (pre-enrollment) and the empty credential.
 
-**Not proven — stated honestly:**
-- a REAL foreign-chip machine: no second machine was available to this testing, so
-  the cross-machine rejection rests on the slot-kill simulation (mechanically the
-  same consult failing: no usable binding = no unseal). A lab leg with a second
-  host or a vTPM pair remains the way to witness it end to end.
+**Not proven — stated honestly (updated after the second-physical-chip attempt):**
+- The fleet's second TPM machine WAS attempted: a freshly enrolled 64 MB vault
+  shipped to the second host and both of its open paths were measured. The second
+  host's /dev TPM nodes and the cryptsetup TCTI library are present, but its TPM2
+  stack refuses tool contexts ("Failed to create TPM2 context: Operation not
+  supported") — so what was observed there is a NON-FUNCTIONAL second stack, not
+  yet a demonstrated foreign-chip consult rejection.
+- What IS measured across the two machines: (a) the shipped image opens on the
+  second host with its passphrase (rc=0 — the file arrived intact, the image is
+  valid there — the positive control), (b) the TPM-token consult fails fast on it
+  (rc=1, no mapper), (c) the same image unseals credentiallessly on the enrolling
+  host (the fourth consecutive). The definitive pair (an enrollment on the second
+  chip SUCCEEDING, then the two chips refusing each other's seals) stays open
+  pending the second host's TPM2-stack diagnosis.
+- The vTPM variant: the fleet's Ubuntu ships the swtpm socket backend but NO
+  swtpm_cuse character-device frontend, and the systemd TPM2 tooling consumes
+  device TCTIs only — a systemd-usable virtual chip is not buildable here without
+  the VM/QEMU route (a separate, heavier leg).
+
 - the HA shapes in `kubernetes.md`: they are documented designs (the physical-chip
   active-passive fleet; the KubeVirt vTPM carrier whose persistent TPM state is a
   since-v1.0 feature with actively maintained live-migration fixes). Neither has
