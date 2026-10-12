@@ -1,0 +1,54 @@
+# luks-vault on Kubernetes: privileged single-replica vault pod + persistent locked image
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: luks-vault
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: luks-vault-vol
+  namespace: luks-vault
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: luks-vault
+  namespace: luks-vault
+  labels:
+    app: luks-vault
+spec:
+  replicas: 1                      # single-mapper contract: never scale this
+  strategy:
+    type: Recreate                 # the old pod dies (trap locks) before the new one starts
+  selector:
+    matchLabels:
+      app: luks-vault
+  template:
+    metadata:
+      labels:
+        app: luks-vault
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: luks-vault
+          image: ghcr.io/OWNER/luks-vault:1.0   # PLACEHOLDER: build + push your own (see kubernetes.md)
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/vault_entry"]
+          args: ["wait"]
+          securityContext:
+            privileged: true       # kernel-level encryption layer (loop + device-mapper)
+          volumeMounts:
+            - name: vault
+              mountPath: /vault
+      volumes:
+        - name: vault
+          persistentVolumeClaim:
+            claimName: luks-vault-vol
